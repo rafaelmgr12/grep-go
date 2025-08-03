@@ -44,6 +44,15 @@ func matchLine(line []byte, pattern string) (bool, error) {
 		return false, fmt.Errorf("unsupported pattern: %q", pattern)
 	}
 
+	if pattern == `\d` {
+		for _, b := range line {
+			if b >= '0' && b <= '9' {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
 	var ok bool
 
 	ok = bytes.ContainsAny(line, pattern)
