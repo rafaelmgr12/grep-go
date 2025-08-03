@@ -40,9 +40,6 @@ func main() {
 }
 
 func matchLine(line []byte, pattern string) (bool, error) {
-	if utf8.RuneCountInString(pattern) != 1 {
-		return false, fmt.Errorf("unsupported pattern: %q", pattern)
-	}
 
 	if pattern == `\d` {
 		for _, b := range line {
@@ -51,6 +48,10 @@ func matchLine(line []byte, pattern string) (bool, error) {
 			}
 		}
 		return false, nil
+	}
+
+	if utf8.RuneCountInString(pattern) != 1 {
+		return false, fmt.Errorf("unsupported pattern: %q", pattern)
 	}
 
 	var ok bool
