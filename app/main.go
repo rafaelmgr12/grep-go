@@ -50,6 +50,16 @@ func matchLine(line []byte, pattern string) (bool, error) {
 		return false, nil
 	}
 
+	if pattern == `\w` {
+		for _, b := range line {
+			if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_' {
+
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
 	if utf8.RuneCountInString(pattern) != 1 {
 		return false, fmt.Errorf("unsupported pattern: %q", pattern)
 	}
