@@ -60,6 +60,16 @@ func matchLine(line []byte, pattern string) (bool, error) {
 		return false, nil
 	}
 
+	if len(pattern) > 3 && pattern[0] == '[' && pattern[1] == '^' && pattern[len(pattern)-1] == ']' {
+		charsToMatch := pattern[1 : len(pattern)-1]
+		for _, b := range line {
+			if bytes.ContainsAny([]byte{b}, charsToMatch) {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+
 	if len(pattern) > 2 && pattern[0] == '[' && pattern[len(pattern)-1] == ']' {
 		charsToMatch := pattern[1 : len(pattern)-1]
 		return bytes.ContainsAny(line, charsToMatch), nil
