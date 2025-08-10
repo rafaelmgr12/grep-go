@@ -194,7 +194,8 @@ func matchAtomOnce(text []byte, atom string) (bool, int) {
 			return true, 1
 		}
 		return false, 0
-
+	case '.':
+		return true, 1
 	default:
 		if text[0] == atom[0] {
 			return true, 1
