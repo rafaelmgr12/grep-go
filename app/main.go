@@ -39,11 +39,15 @@ func main() {
 }
 
 func matchLine(line []byte, pattern string) (bool, error) {
-	if pattern == "" {
-		return false, fmt.Errorf("unsupported pattern: empty")
+	return match(line, pattern)
+}
+
+func match(text []byte, pat string) (bool, error) {
+	if len(pat) > 0 && pat[0] == '^' {
+		return matchHere(text, pat[1:])
 	}
-	for start := 0; start <= len(line); start++ {
-		ok, err := matchHere(line[start:], pattern)
+	for i := 0; i <= len(text); i++ {
+		ok, err := matchHere(text[i:], pat)
 		if err != nil {
 			return false, err
 		}
@@ -55,75 +59,85 @@ func matchLine(line []byte, pattern string) (bool, error) {
 }
 
 func matchHere(text []byte, pat string) (bool, error) {
-	ti := 0
-	pi := 0
-	for pi < len(pat) {
-		if ti >= len(text) {
-			return false, nil
-		}
-		switch pat[pi] {
-		case '\\':
-			if pi+1 >= len(pat) {
-				return false, fmt.Errorf("dangling escape at end of pattern")
-			}
-			switch pat[pi+1] {
-			case 'd':
-				b := text[ti]
-				if b < '0' || b > '9' {
-					return false, nil
-				}
-				ti++
-				pi += 2
-			case 'w':
-				b := text[ti]
-				if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_') {
-					return false, nil
-				}
-				ti++
-				pi += 2
-			default:
-				if text[ti] != pat[pi+1] {
-					return false, nil
-				}
-				ti++
-				pi += 2
-			}
-		case '[':
-			closing := indexOfClosingBracket(pat, pi)
-			if closing == -1 {
-				return false, fmt.Errorf("unterminated character class starting at %d", pi)
-			}
-			inner := pat[pi+1 : closing]
-			neg := false
-			if len(inner) > 0 && inner[0] == '^' {
-				neg = true
-				inner = inner[1:]
-			}
-			if inner == "" {
-				return false, fmt.Errorf("empty character class []")
-			}
-			b := text[ti]
-			in := bytes.ContainsAny([]byte{b}, inner)
-			if neg {
-				if in {
-					return false, nil
-				}
-			} else {
-				if !in {
-					return false, nil
-				}
-			}
-			ti++
-			pi = closing + 1
-		default:
-			if text[ti] != pat[pi] {
-				return false, nil
-			}
-			ti++
-			pi++
-		}
+	if len(pat) == 0 {
+		return true, nil
 	}
-	return true, nil
+	if pat == "$" {
+		return len(text) == 0, nil
+	}
+
+	ok, nextText, nextPat, err := matchAtom(text, pat)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	return matchHere(nextText, nextPat)
+}
+
+func matchAtom(text []byte, pat string) (bool, []byte, string, error) {
+	if len(text) == 0 {
+		return false, text, pat, nil
+	}
+	switch pat[0] {
+	case '\\':
+		if len(pat) < 2 {
+			return false, text, pat, fmt.Errorf("dangling escape at end of pattern")
+		}
+		switch pat[1] {
+		case 'd':
+			b := text[0]
+			if b < '0' || b > '9' {
+				return false, text, pat, nil
+			}
+			return true, text[1:], pat[2:], nil
+		case 'w':
+			b := text[0]
+			if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_') {
+				return false, text, pat, nil
+			}
+			return true, text[1:], pat[2:], nil
+		default:
+			if text[0] != pat[1] {
+				return false, text, pat, nil
+			}
+			return true, text[1:], pat[2:], nil
+		}
+
+	case '[':
+		closing := indexOfClosingBracket(pat, 0)
+		if closing == -1 {
+			return false, text, pat, fmt.Errorf("unterminated character class")
+		}
+		inner := pat[1:closing]
+		neg := false
+		if len(inner) > 0 && inner[0] == '^' {
+			neg = true
+			inner = inner[1:]
+		}
+		if len(inner) == 0 {
+			return false, text, pat, fmt.Errorf("empty character class []")
+		}
+		b := text[0]
+		in := bytes.ContainsAny([]byte{b}, inner)
+		if neg {
+			if in {
+				return false, text, pat, nil
+			}
+		} else {
+			if !in {
+				return false, text, pat, nil
+			}
+		}
+		return true, text[1:], pat[closing+1:], nil
+
+	default:
+		if text[0] != pat[0] {
+			return false, text, pat, nil
+		}
+		return true, text[1:], pat[1:], nil
+	}
 }
 
 func indexOfClosingBracket(pat string, open int) int {
