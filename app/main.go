@@ -72,16 +72,15 @@ func matchHere(text []byte, pat string) (bool, error) {
 	}
 
 	if atomEnd < len(pat) && pat[atomEnd] == '?' {
-
 		ok1, n1 := matchAtomOnce(text, atom)
 		if ok1 {
-			if ok, _ := matchHere(text[n1:], pat[atomEnd+1:]); ok {
+			if ok, err := matchHere(text[n1:], pat[atomEnd+1:]); err != nil {
+				return false, err
+			} else if ok {
 				return true, nil
 			}
-
-			return matchHere(text, pat[atomEnd+1:])
-
 		}
+		return matchHere(text, pat[atomEnd+1:])
 	}
 
 	if atomEnd < len(pat) && pat[atomEnd] == '+' {
@@ -137,6 +136,8 @@ func nextAtom(pat string) (string, int, error) {
 			return "", 0, fmt.Errorf("empty character class []")
 		}
 		return pat[:closing+1], closing + 1, nil
+	case '?':
+		return pat[:1], 1, nil
 	default:
 		return pat[:1], 1, nil
 	}
