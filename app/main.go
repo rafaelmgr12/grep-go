@@ -71,6 +71,19 @@ func matchHere(text []byte, pat string) (bool, error) {
 		return false, err
 	}
 
+	if atomEnd < len(pat) && pat[atomEnd] == '?' {
+
+		ok1, n1 := matchAtomOnce(text, atom)
+		if ok1 {
+			if ok, _ := matchHere(text[n1:], pat[atomEnd+1:]); ok {
+				return true, nil
+			}
+
+			return matchHere(text, pat[atomEnd+1:])
+
+		}
+	}
+
 	if atomEnd < len(pat) && pat[atomEnd] == '+' {
 		ok1, n1 := matchAtomOnce(text, atom)
 		if !ok1 {
