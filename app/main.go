@@ -66,77 +66,126 @@ func matchHere(text []byte, pat string) (bool, error) {
 		return len(text) == 0, nil
 	}
 
-	ok, nextText, nextPat, err := matchAtom(text, pat)
+	atom, atomEnd, err := nextAtom(pat)
 	if err != nil {
 		return false, err
 	}
+
+	if atomEnd < len(pat) && pat[atomEnd] == '+' {
+		ok1, n1 := matchAtomOnce(text, atom)
+		if !ok1 {
+			return false, nil
+		}
+		i := n1
+		for {
+			okMore, nMore := matchAtomOnce(text[i:], atom)
+			if !okMore {
+				break
+			}
+			i += nMore
+		}
+		for consumed := i; consumed >= n1; consumed-- {
+			ok, err := matchHere(text[consumed:], pat[atomEnd+1:])
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	ok, n := matchAtomOnce(text, atom)
 	if !ok {
 		return false, nil
 	}
-	return matchHere(nextText, nextPat)
+	return matchHere(text[n:], pat[atomEnd:])
 }
 
-func matchAtom(text []byte, pat string) (bool, []byte, string, error) {
-	if len(text) == 0 {
-		return false, text, pat, nil
+func nextAtom(pat string) (string, int, error) {
+	if len(pat) == 0 {
+		return "", 0, fmt.Errorf("empty pattern in nextAtom")
 	}
 	switch pat[0] {
+	case '+':
+		return "", 0, fmt.Errorf("leading '+' without a preceding atom")
 	case '\\':
 		if len(pat) < 2 {
-			return false, text, pat, fmt.Errorf("dangling escape at end of pattern")
+			return "", 0, fmt.Errorf("dangling escape at end of pattern")
 		}
-		switch pat[1] {
-		case 'd':
-			b := text[0]
-			if b < '0' || b > '9' {
-				return false, text, pat, nil
-			}
-			return true, text[1:], pat[2:], nil
-		case 'w':
-			b := text[0]
-			if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_') {
-				return false, text, pat, nil
-			}
-			return true, text[1:], pat[2:], nil
-		default:
-			if text[0] != pat[1] {
-				return false, text, pat, nil
-			}
-			return true, text[1:], pat[2:], nil
-		}
-
+		return pat[:2], 2, nil
 	case '[':
 		closing := indexOfClosingBracket(pat, 0)
 		if closing == -1 {
-			return false, text, pat, fmt.Errorf("unterminated character class")
+			return "", 0, fmt.Errorf("unterminated character class")
 		}
-		inner := pat[1:closing]
+		if closing == 1 {
+			return "", 0, fmt.Errorf("empty character class []")
+		}
+		return pat[:closing+1], closing + 1, nil
+	default:
+		return pat[:1], 1, nil
+	}
+}
+
+func matchAtomOnce(text []byte, atom string) (bool, int) {
+	if len(text) == 0 || len(atom) == 0 {
+		return false, 0
+	}
+
+	switch atom[0] {
+	case '\\':
+		switch atom[1] {
+		case 'd':
+			b := text[0]
+			if b >= '0' && b <= '9' {
+				return true, 1
+			}
+			return false, 0
+		case 'w':
+			b := text[0]
+			if (b >= 'a' && b <= 'z') ||
+				(b >= 'A' && b <= 'Z') ||
+				(b >= '0' && b <= '9') ||
+				b == '_' {
+				return true, 1
+			}
+			return false, 0
+		default:
+			if text[0] == atom[1] {
+				return true, 1
+			}
+			return false, 0
+		}
+
+	case '[':
+		inner := atom[1 : len(atom)-1]
 		neg := false
 		if len(inner) > 0 && inner[0] == '^' {
 			neg = true
 			inner = inner[1:]
 		}
 		if len(inner) == 0 {
-			return false, text, pat, fmt.Errorf("empty character class []")
+			return false, 0
 		}
-		b := text[0]
-		in := bytes.ContainsAny([]byte{b}, inner)
+		in := bytes.ContainsAny([]byte{text[0]}, inner)
 		if neg {
-			if in {
-				return false, text, pat, nil
-			}
-		} else {
 			if !in {
-				return false, text, pat, nil
+				return true, 1
 			}
+			return false, 0
 		}
-		return true, text[1:], pat[closing+1:], nil
+		if in {
+			return true, 1
+		}
+		return false, 0
 
 	default:
-		if text[0] != pat[0] {
-			return false, text, pat, nil
+		if text[0] == atom[0] {
+			return true, 1
 		}
-		return true, text[1:], pat[1:], nil
+		return false, 0
 	}
 }
 
