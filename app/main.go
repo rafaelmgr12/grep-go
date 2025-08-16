@@ -34,8 +34,7 @@ func main() {
 	if !ok {
 		os.Exit(1)
 	}
-
-	// default exit code is 0 which means success
+	// default exit code 0
 }
 
 func matchLine(line []byte, pattern string) (bool, error) {
@@ -59,6 +58,21 @@ func match(text []byte, pat string) (bool, error) {
 }
 
 func matchHere(text []byte, pat string) (bool, error) {
+	// Alternation at top-level for this slice
+	alts := splitAlternatives(pat)
+	if len(alts) > 1 {
+		for _, alt := range alts {
+			ok, err := matchHere(text, alt)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
 	if len(pat) == 0 {
 		return true, nil
 	}
@@ -71,6 +85,7 @@ func matchHere(text []byte, pat string) (bool, error) {
 		return false, err
 	}
 
+	// '?' quantifier (0 or 1)
 	if atomEnd < len(pat) && pat[atomEnd] == '?' {
 		ok1, n1 := matchAtomOnce(text, atom)
 		if ok1 {
@@ -83,6 +98,7 @@ func matchHere(text []byte, pat string) (bool, error) {
 		return matchHere(text, pat[atomEnd+1:])
 	}
 
+	// '+' quantifier (1 or more), greedy with backtracking
 	if atomEnd < len(pat) && pat[atomEnd] == '+' {
 		ok1, n1 := matchAtomOnce(text, atom)
 		if !ok1 {
@@ -96,6 +112,7 @@ func matchHere(text []byte, pat string) (bool, error) {
 			}
 			i += nMore
 		}
+		// backtrack the number of repetitions
 		for consumed := i; consumed >= n1; consumed-- {
 			ok, err := matchHere(text[consumed:], pat[atomEnd+1:])
 			if err != nil {
@@ -108,6 +125,7 @@ func matchHere(text []byte, pat string) (bool, error) {
 		return false, nil
 	}
 
+	// Single occurrence
 	ok, n := matchAtomOnce(text, atom)
 	if !ok {
 		return false, nil
@@ -120,8 +138,16 @@ func nextAtom(pat string) (string, int, error) {
 		return "", 0, fmt.Errorf("empty pattern in nextAtom")
 	}
 	switch pat[0] {
+	case '(':
+		closing := indexOfClosingParen(pat, 0)
+		if closing == -1 {
+			return "", 0, fmt.Errorf("unterminated group")
+		}
+		return pat[:closing+1], closing + 1, nil
 	case '+':
 		return "", 0, fmt.Errorf("leading '+' without a preceding atom")
+	case '?':
+		return "", 0, fmt.Errorf("leading '?' without a preceding atom")
 	case '\\':
 		if len(pat) < 2 {
 			return "", 0, fmt.Errorf("dangling escape at end of pattern")
@@ -136,8 +162,6 @@ func nextAtom(pat string) (string, int, error) {
 			return "", 0, fmt.Errorf("empty character class []")
 		}
 		return pat[:closing+1], closing + 1, nil
-	case '?':
-		return pat[:1], 1, nil
 	default:
 		return pat[:1], 1, nil
 	}
@@ -148,8 +172,17 @@ func matchAtomOnce(text []byte, atom string) (bool, int) {
 		return false, 0
 	}
 
+	// Group (...) — match the inner pattern and determine consumption
+	if atom[0] == '(' {
+		inner := atom[1 : len(atom)-1]
+		return matchGroup(text, inner)
+	}
+
 	switch atom[0] {
 	case '\\':
+		if len(atom) < 2 {
+			return false, 0
+		}
 		switch atom[1] {
 		case 'd':
 			b := text[0]
@@ -194,14 +227,40 @@ func matchAtomOnce(text []byte, atom string) (bool, int) {
 			return true, 1
 		}
 		return false, 0
+
 	case '.':
 		return true, 1
+
 	default:
 		if text[0] == atom[0] {
 			return true, 1
 		}
 		return false, 0
 	}
+}
+
+// matchGroup tries to match a group pattern against text
+// Returns (matched, consumed) where consumed is how much text was used
+func matchGroup(text []byte, pat string) (bool, int) {
+
+	isWord := func(b byte) bool {
+		return (b >= 'a' && b <= 'z') ||
+			(b >= 'A' && b <= 'Z') ||
+			(b >= '0' && b <= '9') ||
+			b == '_'
+	}
+
+	for consumed := len(text); consumed >= 0; consumed-- {
+		fullPat := pat + "$"
+		if ok, err := matchHere(text[:consumed], fullPat); err == nil && ok {
+
+			if consumed < len(text) && isWord(text[consumed]) {
+				continue
+			}
+			return true, consumed
+		}
+	}
+	return false, 0
 }
 
 func indexOfClosingBracket(pat string, open int) int {
@@ -211,4 +270,81 @@ func indexOfClosingBracket(pat string, open int) int {
 		}
 	}
 	return -1
+}
+
+func indexOfClosingParen(pat string, open int) int {
+	depth := 0
+	esc := false
+	br := 0 // bracket depth to ignore ')' inside [...]
+	for i := open; i < len(pat); i++ {
+		if esc {
+			esc = false
+			continue
+		}
+		switch pat[i] {
+		case '\\':
+			esc = true
+		case '[':
+			br++
+		case ']':
+			if br > 0 {
+				br--
+			}
+		case '(':
+			if br == 0 {
+				depth++
+			}
+		case ')':
+			if br == 0 {
+				depth--
+				if depth == 0 {
+					return i
+				}
+			}
+		}
+	}
+	return -1
+}
+
+func splitAlternatives(pat string) []string {
+	var parts []string
+	last := 0
+	parenDepth := 0
+	brDepth := 0
+	esc := false
+
+	for i := 0; i < len(pat); i++ {
+		c := pat[i]
+		if esc {
+			esc = false
+			continue
+		}
+		if c == '\\' {
+			esc = true
+			continue
+		}
+		switch c {
+		case '[':
+			brDepth++
+		case ']':
+			if brDepth > 0 {
+				brDepth--
+			}
+		case '(':
+			if brDepth == 0 {
+				parenDepth++
+			}
+		case ')':
+			if brDepth == 0 && parenDepth > 0 {
+				parenDepth--
+			}
+		case '|':
+			if parenDepth == 0 && brDepth == 0 {
+				parts = append(parts, pat[last:i])
+				last = i + 1
+			}
+		}
+	}
+	parts = append(parts, pat[last:])
+	return parts
 }
