@@ -2,6 +2,43 @@ package main
 
 import "fmt"
 
+type groupIndex map[int]int
+
+func buildGroupIndex(pat string) groupIndex {
+	g := make(groupIndex)
+	esc := false
+	br := 0
+	num := 0
+	for i := 0; i < len(pat); i++ {
+		c := pat[i]
+		if esc {
+			esc = false
+			continue
+		}
+
+		switch c {
+		case '\\':
+			esc = true
+		case '[':
+			br++
+		case ']':
+			if br > 0 {
+				br--
+			}
+		case '(':
+			if br == 0 {
+				num++
+			}
+		case ')':
+			if br == 0 {
+				num++
+				g[i] = num
+			}
+		}
+	}
+	return g
+}
+
 func indexOfClosingBracket(pat string, open int) int {
 	esc := false
 	for i := open + 1; i < len(pat); i++ {
@@ -138,4 +175,56 @@ func nextAtom(pat string) (string, int, error) {
 	default:
 		return pat[:1], 1, nil
 	}
+}
+
+type altSeg struct {
+	s   string
+	rel int
+}
+
+func splitTopLevelAlternationWithPos(pat string) []altSeg {
+	var segs []altSeg
+	last := 0
+	parenDepth := 0
+	bracketDepth := 0
+	esc := false
+
+	for i := 0; i < len(pat); i++ {
+		c := pat[i]
+
+		if esc {
+			esc = false
+			continue
+		}
+
+		switch c {
+		case '\\':
+			esc = true
+		case '[':
+			bracketDepth++
+		case ']':
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		case '(':
+			if bracketDepth == 0 {
+				parenDepth++
+			}
+		case ')':
+			if bracketDepth == 0 && parenDepth > 0 {
+				parenDepth--
+			}
+		case '|':
+			if parenDepth == 0 && bracketDepth == 0 {
+				segs = append(segs, altSeg{s: pat[last:i], rel: last})
+				last = i + 1
+			}
+		}
+	}
+
+	if len(segs) == 0 {
+		return []altSeg{{s: pat, rel: 0}}
+	}
+	segs = append(segs, altSeg{s: pat[last:], rel: last})
+	return segs
 }

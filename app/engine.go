@@ -3,18 +3,19 @@ package main
 import "bytes"
 
 func matchLine(line []byte, pattern string) (bool, error) {
-	st := &env{}
-	ok, _, err := match(line, pattern, st)
+	idx := buildGroupIndex(pattern)
+	st := newEnv()
+	ok, _, err := match(line, pattern, 0, pattern, idx, st)
 	return ok, err
 }
 
-func match(text []byte, pat string, e *env) (bool, int, error) {
+func match(text []byte, pat string, baseIdx int, full string, gi groupIndex, e *env) (bool, int, error) {
 	if len(pat) > 0 && pat[0] == '^' {
-		return matchHere(text, pat[1:], e)
+		return matchHere(text, pat[1:], baseIdx+1, full, gi, e)
 	}
 	for i := 0; i <= len(text); i++ {
 		st := cloneEnv(e)
-		ok, cons, err := matchHere(text[i:], pat, &st)
+		ok, cons, err := matchHere(text[i:], pat, baseIdx, full, gi, &st)
 		if err != nil {
 			return false, 0, err
 		}
@@ -25,20 +26,7 @@ func match(text []byte, pat string, e *env) (bool, int, error) {
 	return false, 0, nil
 }
 
-func matchHere(text []byte, pat string, e *env) (bool, int, error) {
-	// Handle end anchor specially if pat ends with '$' but is not just "$"
-	if len(pat) > 0 && pat[len(pat)-1] == '$' && pat != "$" {
-		ok, cons, err := matchHere(text, pat[:len(pat)-1], e)
-		if err != nil {
-			return false, 0, err
-		}
-		if ok && cons == len(text) {
-			return true, cons, nil
-		}
-		return false, 0, nil
-	}
-
-	// base cases
+func matchHere(text []byte, pat string, baseIdx int, full string, gi groupIndex, e *env) (bool, int, error) {
 	if pat == "" {
 		return true, 0, nil
 	}
@@ -49,16 +37,15 @@ func matchHere(text []byte, pat string, e *env) (bool, int, error) {
 		return false, 0, nil
 	}
 
-	// Alternation at top-level for this slice (must be BEFORE atom parsing)
-	if alts := splitTopLevelAlternation(pat); len(alts) > 1 {
-		for _, alt := range alts {
+	if segs := splitTopLevelAlternationWithPos(pat); len(segs) > 1 {
+		for _, s := range segs {
 			st := cloneEnv(e)
-			ok, cons, err := matchHere(text, alt, &st)
+			ok, cons, err := matchHere(text, s.s, baseIdx+s.rel, full, gi, &st)
 			if err != nil {
 				return false, 0, err
 			}
 			if ok {
-				*e = st // propaga captura do ramo que venceu
+				*e = st
 				return true, cons, nil
 			}
 		}
@@ -70,54 +57,44 @@ func matchHere(text []byte, pat string, e *env) (bool, int, error) {
 		return false, 0, err
 	}
 
-	// '?' quantifier (0 or 1)
+	// '?'
 	if atomEnd < len(pat) && pat[atomEnd] == '?' {
-		// tenta 1x
 		st1 := cloneEnv(e)
-		ok1, n1 := matchAtomOnce(text, atom, &st1)
-		if ok1 {
-			ok2, cons2, err := matchHere(text[n1:], pat[atomEnd+1:], &st1)
-			if err != nil {
+		if ok1, n1 := matchAtomOnce(text, atom, baseIdx, full, gi, &st1); ok1 {
+			if ok, cons, err := matchHere(text[n1:], pat[atomEnd+1:], baseIdx+atomEnd, full, gi, &st1); ok {
+				*e = st1
+				return true, n1 + cons, nil
+			} else if err != nil {
 				return false, 0, err
 			}
-			if ok2 {
-				*e = st1
-				return true, n1 + cons2, nil
-			}
 		}
-		// tenta 0x
 		st0 := cloneEnv(e)
-		ok0, cons0, err := matchHere(text, pat[atomEnd+1:], &st0)
-		if err != nil {
-			return false, 0, err
-		}
-		if ok0 {
+		if ok, cons, err := matchHere(text, pat[atomEnd+1:], baseIdx+atomEnd, full, gi, &st0); ok {
 			*e = st0
-			return true, cons0, nil
+			return true, cons, nil
+		} else if err != nil {
+			return false, 0, err
 		}
 		return false, 0, nil
 	}
 
-	// '+' quantifier (1 or more), greedy with backtracking
+	// '+'
 	if atomEnd < len(pat) && pat[atomEnd] == '+' {
 		st1 := cloneEnv(e)
-		ok1, n1 := matchAtomOnce(text, atom, &st1)
+		ok1, n1 := matchAtomOnce(text, atom, baseIdx, full, gi, &st1)
 		if !ok1 || n1 == 0 {
 			return false, 0, nil
 		}
-
 		type step struct {
 			off int
 			st  env
 		}
-
 		steps := []step{{off: n1, st: st1}}
-
 		i := n1
 		stAcc := st1
 		for {
 			stNext := cloneEnv(&stAcc)
-			okMore, nMore := matchAtomOnce(text[i:], atom, &stNext) // CORRETO: text[i:]
+			okMore, nMore := matchAtomOnce(text[i:], atom, baseIdx, full, gi, &stNext)
 			if !okMore || nMore == 0 {
 				break
 			}
@@ -125,78 +102,52 @@ func matchHere(text []byte, pat string, e *env) (bool, int, error) {
 			steps = append(steps, step{off: i, st: stNext})
 			stAcc = stNext
 		}
-
-		// backtrack do maior para o menor
 		for k := len(steps) - 1; k >= 0; k-- {
 			stK := steps[k].st
-			ok, consRest, err := matchHere(text[steps[k].off:], pat[atomEnd+1:], &stK)
+			ok, cons, err := matchHere(text[steps[k].off:], pat[atomEnd+1:], baseIdx+atomEnd, full, gi, &stK)
 			if err != nil {
 				return false, 0, err
 			}
 			if ok {
 				*e = stK
-				return true, steps[k].off + consRest, nil
+				return true, steps[k].off + cons, nil
 			}
 		}
-
 		return false, 0, nil
 	}
 
-	// Single occurrence
-	ok, n := matchAtomOnce(text, atom, e)
+	ok, n := matchAtomOnce(text, atom, baseIdx, full, gi, e)
 	if !ok {
 		return false, 0, nil
 	}
-	ok2, cons2, err := matchHere(text[n:], pat[atomEnd:], e)
+	ok2, cons, err := matchHere(text[n:], pat[atomEnd:], baseIdx+atomEnd, full, gi, e)
 	if err != nil {
 		return false, 0, err
 	}
 	if ok2 {
-		return true, n + cons2, nil
+		return true, n + cons, nil
 	}
 	return false, 0, nil
 }
 
-func matchAtomOnce(text []byte, atom string, e *env) (bool, int) {
+func matchAtomOnce(text []byte, atom string, baseIdx int, full string, gi groupIndex, e *env) (bool, int) {
 	if len(atom) == 0 {
 		return false, 0
 	}
-	// Be careful: some atoms (like '$') are handled in matchHere, not here.
 	if len(text) == 0 {
-		// only zero-width atoms could match empty text; we não suportamos aqui
-		// (evita loops; backref vazia é tratada como falha)
 		return false, 0
 	}
-
-	// Group (...) — match the inner pattern and determine consumption
 	if atom[0] == '(' {
 		inner := atom[1 : len(atom)-1]
-		ok, n, err := matchGroup(text, inner, e)
-		if err != nil {
-			return false, 0
-		}
-		return ok, n
+		grpNum := gi[baseIdx]
+		return matchGroup(text, inner, baseIdx+1, full, gi, grpNum, e)
 	}
-
 	switch atom[0] {
 	case '\\':
 		if len(atom) < 2 {
 			return false, 0
 		}
 		switch atom[1] {
-		case '1':
-			// backref: precisa já ter grupo 1 capturado e não-vazio
-			if !e.capSet || len(e.capVal) == 0 {
-				return false, 0
-			}
-			if len(text) < len(e.capVal) {
-				return false, 0
-			}
-			if bytes.Equal(text[:len(e.capVal)], e.capVal) {
-				return true, len(e.capVal)
-			}
-			return false, 0
-
 		case 'd':
 			b := text[0]
 			if b >= '0' && b <= '9' {
@@ -213,22 +164,31 @@ func matchAtomOnce(text []byte, atom string, e *env) (bool, int) {
 			}
 			return false, 0
 		default:
-			// escape literal: \X
+			if atom[1] >= '1' && atom[1] <= '9' {
+				ref := int(atom[1] - '0')
+				val, ok := e.groups[ref]
+				if !ok {
+					return false, 0
+				}
+				if len(text) < len(val) {
+					return false, 0
+				}
+				if bytes.Equal(text[:len(val)], val) {
+					return true, len(val)
+				}
+				return false, 0
+			}
 			if text[0] == atom[1] {
 				return true, 1
 			}
 			return false, 0
 		}
-
 	case '[':
 		inner := atom[1 : len(atom)-1]
 		neg := false
 		if len(inner) > 0 && inner[0] == '^' {
 			neg = true
 			inner = inner[1:]
-		}
-		if len(inner) == 0 {
-			return false, 0
 		}
 		in := bytes.ContainsAny([]byte{text[0]}, inner)
 		if neg {
@@ -241,10 +201,8 @@ func matchAtomOnce(text []byte, atom string, e *env) (bool, int) {
 			return true, 1
 		}
 		return false, 0
-
 	case '.':
 		return true, 1
-
 	default:
 		if text[0] == atom[0] {
 			return true, 1
@@ -253,27 +211,17 @@ func matchAtomOnce(text []byte, atom string, e *env) (bool, int) {
 	}
 }
 
-// matchGroup tries to match a group pattern against text
-// Returns (matched, consumed, error) where consumed is how much text was used
-func matchGroup(text []byte, pat string, e *env) (bool, int, error) {
-	// Greedy: maior prefixo primeiro
+func matchGroup(text []byte, pat string, baseIdx int, full string, gi groupIndex, grpNum int, e *env) (bool, int) {
 	for i := len(text); i >= 0; i-- {
 		st := cloneEnv(e)
-		ok, cons, err := matchHere(text[:i], pat, &st)
-		if err != nil {
-			return false, 0, err
-		}
-		if ok && cons == i {
-			// define captura do grupo 1 se ainda não definida
-			if !st.capSet {
-				st.capSet = true
-				tmp := make([]byte, i)
-				copy(tmp, text[:i]) // copia para não depender do slice original
-				st.capVal = tmp
-			}
+		ok, cons, err := match(text[:i], pat, baseIdx, full, gi, &st)
+		if err == nil && ok && cons == i {
+			tmp := make([]byte, i)
+			copy(tmp, text[:i])
+			st.groups[grpNum] = tmp
 			*e = st
-			return true, i, nil
+			return true, i
 		}
 	}
-	return false, 0, nil
+	return false, 0
 }
