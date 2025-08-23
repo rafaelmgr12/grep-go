@@ -28,11 +28,10 @@ func buildGroupIndex(pat string) groupIndex {
 		case '(':
 			if br == 0 {
 				num++
+				g[i] = num
 			}
 		case ')':
 			if br == 0 {
-				num++
-				g[i] = num
 			}
 		}
 	}

@@ -212,16 +212,15 @@ func matchAtomOnce(text []byte, atom string, baseIdx int, full string, gi groupI
 }
 
 func matchGroup(text []byte, pat string, baseIdx int, full string, gi groupIndex, grpNum int, e *env) (bool, int) {
-	for i := len(text); i >= 0; i-- {
-		st := cloneEnv(e)
-		ok, cons, err := match(text[:i], pat, baseIdx, full, gi, &st)
-		if err == nil && ok && cons == i {
-			tmp := make([]byte, i)
-			copy(tmp, text[:i])
-			st.groups[grpNum] = tmp
-			*e = st
-			return true, i
-		}
+	st := cloneEnv(e)
+	ok, cons, err := matchHere(text, pat, baseIdx, full, gi, &st)
+	if err != nil || !ok {
+		return false, 0
 	}
-	return false, 0
+
+	tmp := make([]byte, cons)
+	copy(tmp, text[:cons])
+	st.groups[grpNum] = tmp
+	*e = st
+	return true, cons
 }
