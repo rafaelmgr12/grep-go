@@ -6,10 +6,10 @@ import (
 	"os"
 )
 
-// Usage: echo <input_text> | your_program.sh -E <pattern>
+// Usage: mygrep -E <pattern> [file ...]
 func main() {
-	if len(os.Args) < 3 || len(os.Args) > 4 || os.Args[1] != "-E" {
-		fmt.Fprintf(os.Stderr, "usage: mygrep -E <pattern> [file]\n")
+	if len(os.Args) < 3 || os.Args[1] != "-E" {
+		fmt.Fprintf(os.Stderr, "usage: mygrep -E <pattern> [file ...]\n")
 		os.Exit(2) // 1 means no lines were selected, >1 means error
 	}
 
@@ -20,36 +20,59 @@ func main() {
 		os.Exit(2)
 	}
 
-	var reader *os.File
-	isFile := len(os.Args) == 4
-	if isFile {
-		reader, err = os.Open(os.Args[3])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: open file: %v\n", err)
-			os.Exit(2)
-		}
-		defer reader.Close()
-	} else {
-		reader = os.Stdin
-	}
-
-	scanner := bufio.NewScanner(reader)
+	files := os.Args[3:]
+	numFiles := len(files)
 	found := false
-	for scanner.Scan() {
-		line := scanner.Text()
-		ok, matchErr := re.Match([]byte(line))
-		if matchErr != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", matchErr)
+
+	if numFiles == 0 {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			line := scanner.Text()
+			ok, matchErr := re.Match([]byte(line))
+			if matchErr != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", matchErr)
+				os.Exit(2)
+			}
+			if ok {
+				fmt.Println(line)
+				found = true
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: read input: %v\n", err)
 			os.Exit(2)
 		}
-		if ok {
-			fmt.Println(line)
-			found = true
+	} else {
+		for _, file := range files {
+			reader, err := os.Open(file)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: open file %s: %v\n", file, err)
+				os.Exit(2)
+			}
+			defer reader.Close()
+
+			scanner := bufio.NewScanner(reader)
+			for scanner.Scan() {
+				line := scanner.Text()
+				ok, matchErr := re.Match([]byte(line))
+				if matchErr != nil {
+					fmt.Fprintf(os.Stderr, "error: %v\n", matchErr)
+					os.Exit(2)
+				}
+				if ok {
+					if numFiles > 1 {
+						fmt.Printf("%s:%s\n", file, line)
+					} else {
+						fmt.Println(line)
+					}
+					found = true
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				fmt.Fprintf(os.Stderr, "error: read file %s: %v\n", file, err)
+				os.Exit(2)
+			}
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: read input: %v\n", err)
-		os.Exit(2)
 	}
 
 	if found {
