@@ -1,9 +1,8 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
-	"io"
 	"os"
 )
 
@@ -21,30 +20,39 @@ func main() {
 		os.Exit(2)
 	}
 
-	var input []byte
-	var readErr error
+	var reader *os.File
 	isFile := len(os.Args) == 4
 	if isFile {
-		input, readErr = os.ReadFile(os.Args[3])
-	} else {
-		input, readErr = io.ReadAll(os.Stdin)
-	}
-	if readErr != nil {
-		fmt.Fprintf(os.Stderr, "error: read input: %v\n", readErr)
-		os.Exit(2)
-	}
-
-	line := bytes.TrimSuffix(input, []byte("\n"))
-	ok, matchErr := re.Match(line)
-	if matchErr != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", matchErr)
-		os.Exit(2)
-	}
-
-	if ok {
-		if isFile {
-			os.Stdout.Write(input)
+		reader, err = os.Open(os.Args[3])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: open file: %v\n", err)
+			os.Exit(2)
 		}
+		defer reader.Close()
+	} else {
+		reader = os.Stdin
+	}
+
+	scanner := bufio.NewScanner(reader)
+	found := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		ok, matchErr := re.Match([]byte(line))
+		if matchErr != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", matchErr)
+			os.Exit(2)
+		}
+		if ok {
+			fmt.Println(line)
+			found = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: read input: %v\n", err)
+		os.Exit(2)
+	}
+
+	if found {
 		os.Exit(0)
 	}
 	os.Exit(1)
