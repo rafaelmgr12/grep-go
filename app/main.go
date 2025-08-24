@@ -14,6 +14,11 @@ func main() {
 	}
 
 	pattern := os.Args[2]
+	re, err := Compile(pattern)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: invalid pattern: %v\n", err)
+		os.Exit(2)
+	}
 
 	line, err := io.ReadAll(os.Stdin) // assume we're only dealing with a single line
 	if err != nil {
@@ -21,7 +26,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	ok, err := matchLine(line, pattern)
+	ok, err := re.Match(line)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(2)

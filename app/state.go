@@ -8,11 +8,11 @@ func newEnv() *env {
 	return &env{groups: make(map[int][]byte)}
 }
 
-func cloneEnv(e *env) env {
+func (e *env) clone() *env {
 	if e == nil {
-		return env{}
+		return newEnv()
 	}
-	cl := env{groups: make(map[int][]byte)}
+	cl := newEnv()
 	for k, v := range e.groups {
 		if v == nil {
 			cl.groups[k] = nil

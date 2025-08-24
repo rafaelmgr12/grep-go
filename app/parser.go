@@ -89,55 +89,6 @@ func indexOfClosingParen(pat string, open int) int {
 	return -1
 }
 
-// splitTopLevelAlternation splits pat by '|' ONLY when not inside () or [] and not escaped.
-func splitTopLevelAlternation(pat string) []string {
-	var parts []string
-	last := 0
-	parenDepth := 0
-	bracketDepth := 0
-	esc := false
-
-	for i := 0; i < len(pat); i++ {
-		c := pat[i]
-
-		if esc {
-			esc = false
-			continue
-		}
-
-		switch c {
-		case '\\':
-			esc = true
-		case '[':
-			// bracket depth is independent of paren depth
-			bracketDepth++
-		case ']':
-			if bracketDepth > 0 {
-				bracketDepth--
-			}
-		case '(':
-			if bracketDepth == 0 {
-				parenDepth++
-			}
-		case ')':
-			if bracketDepth == 0 && parenDepth > 0 {
-				parenDepth--
-			}
-		case '|':
-			if parenDepth == 0 && bracketDepth == 0 {
-				parts = append(parts, pat[last:i])
-				last = i + 1
-			}
-		}
-	}
-
-	if len(parts) == 0 {
-		return []string{pat}
-	}
-	parts = append(parts, pat[last:])
-	return parts
-}
-
 func nextAtom(pat string) (string, int, error) {
 	if len(pat) == 0 {
 		return "", 0, fmt.Errorf("empty pattern in nextAtom")
