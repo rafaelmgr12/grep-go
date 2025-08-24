@@ -1,3 +1,3 @@
-module github.com/codecrafters-io/grep-starter-go
+module github.com/rafaelmgr12/mygrep
 
-go 1.24.0
+go 1.23.0
