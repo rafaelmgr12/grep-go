@@ -61,7 +61,7 @@ func matchHere(text []byte, pat string, baseIdx int, full string, gi groupIndex,
 	if atomEnd < len(pat) && pat[atomEnd] == '?' {
 		st1 := cloneEnv(e)
 		if ok1, n1 := matchAtomOnce(text, atom, baseIdx, full, gi, &st1); ok1 {
-			if ok, cons, err := matchHere(text[n1:], pat[atomEnd+1:], baseIdx+atomEnd, full, gi, &st1); ok {
+			if ok, cons, err := matchHere(text[n1:], pat[atomEnd+1:], baseIdx+atomEnd+1, full, gi, &st1); ok {
 				*e = st1
 				return true, n1 + cons, nil
 			} else if err != nil {
@@ -69,7 +69,7 @@ func matchHere(text []byte, pat string, baseIdx int, full string, gi groupIndex,
 			}
 		}
 		st0 := cloneEnv(e)
-		if ok, cons, err := matchHere(text, pat[atomEnd+1:], baseIdx+atomEnd, full, gi, &st0); ok {
+		if ok, cons, err := matchHere(text, pat[atomEnd+1:], baseIdx+atomEnd+1, full, gi, &st0); ok {
 			*e = st0
 			return true, cons, nil
 		} else if err != nil {
@@ -104,7 +104,7 @@ func matchHere(text []byte, pat string, baseIdx int, full string, gi groupIndex,
 		}
 		for k := len(steps) - 1; k >= 0; k-- {
 			stK := steps[k].st
-			ok, cons, err := matchHere(text[steps[k].off:], pat[atomEnd+1:], baseIdx+atomEnd, full, gi, &stK)
+			ok, cons, err := matchHere(text[steps[k].off:], pat[atomEnd+1:], baseIdx+atomEnd+1, full, gi, &stK)
 			if err != nil {
 				return false, 0, err
 			}
@@ -112,6 +112,20 @@ func matchHere(text []byte, pat string, baseIdx int, full string, gi groupIndex,
 				*e = stK
 				return true, steps[k].off + cons, nil
 			}
+		}
+		return false, 0, nil
+	}
+
+	// Special handling for capturing groups
+	if atom[0] == '(' {
+		inner := atom[1 : len(atom)-1]
+		grpNum := gi[baseIdx]
+		ok, cons, err := matchGroup(text, inner, baseIdx+1, full, gi, grpNum, e, pat[atomEnd:], baseIdx+atomEnd)
+		if err != nil {
+			return false, 0, err
+		}
+		if ok {
+			return true, cons, nil
 		}
 		return false, 0, nil
 	}
@@ -140,7 +154,8 @@ func matchAtomOnce(text []byte, atom string, baseIdx int, full string, gi groupI
 	if atom[0] == '(' {
 		inner := atom[1 : len(atom)-1]
 		grpNum := gi[baseIdx]
-		return matchGroup(text, inner, baseIdx+1, full, gi, grpNum, e)
+		ok, cons := matchGroupOld(text, inner, baseIdx+1, full, gi, grpNum, e) // Use old version for nested if needed, but since special handled above, this shouldn't be called for groups
+		return ok, cons
 	}
 	switch atom[0] {
 	case '\\':
@@ -211,16 +226,43 @@ func matchAtomOnce(text []byte, atom string, baseIdx int, full string, gi groupI
 	}
 }
 
-func matchGroup(text []byte, pat string, baseIdx int, full string, gi groupIndex, grpNum int, e *env) (bool, int) {
+// Old matchGroup for if called, but should not be for top-level groups
+func matchGroupOld(text []byte, pat string, baseIdx int, full string, gi groupIndex, grpNum int, e *env) (bool, int) {
 	st := cloneEnv(e)
 	ok, cons, err := matchHere(text, pat, baseIdx, full, gi, &st)
 	if err != nil || !ok {
 		return false, 0
 	}
-
 	tmp := make([]byte, cons)
 	copy(tmp, text[:cons])
 	st.groups[grpNum] = tmp
 	*e = st
 	return true, cons
+}
+
+// New matchGroup with backtracking support
+func matchGroup(text []byte, pat string, baseIdx int, full string, gi groupIndex, grpNum int, e *env, postPat string, postBaseIdx int) (bool, int, error) {
+	for i := len(text); i >= 0; i-- {
+		st := cloneEnv(e)
+		ok, cons, err := matchHere(text[:i], pat, baseIdx, full, gi, &st)
+		if err != nil {
+			continue
+		}
+		if !ok || cons != i {
+			continue
+		}
+		tmp := make([]byte, i)
+		copy(tmp, text[:i])
+		st.groups[grpNum] = tmp
+		st2 := cloneEnv(&st)
+		ok2, cons2, err2 := matchHere(text[i:], postPat, postBaseIdx, full, gi, &st2)
+		if err2 != nil {
+			return false, 0, err2
+		}
+		if ok2 {
+			*e = st2
+			return true, i + cons2, nil
+		}
+	}
+	return false, 0, nil
 }

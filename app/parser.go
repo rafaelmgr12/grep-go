@@ -157,8 +157,8 @@ func nextAtom(pat string) (string, int, error) {
 		if len(pat) < 2 {
 			return "", 0, fmt.Errorf("dangling escape at end of pattern")
 		}
-		// backref \1 como átomo especial nesta etapa
-		if pat[1] == '1' {
+
+		if pat[1] >= '1' && pat[1] <= '9' {
 			return pat[:2], 2, nil
 		}
 		return pat[:2], 2, nil
