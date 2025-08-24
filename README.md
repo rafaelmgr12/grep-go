@@ -1,15 +1,40 @@
 
+
 # mygrep
 
-This repository contains an educational implementation of a minimal `grep` clone written in Go. The project demonstrates a custom regular expression engine and file searching logic, inspired by the [CodeCrafters](https://codecrafters.io) "Build Your Own grep" challenge.
+mygrep is an open source, minimal grep clone written in Go, featuring a custom regular expression engine and robust file searching capabilities. The project is designed for learning, extensibility, and community collaboration.
+
+## Table of Contents
+
+- [mygrep](#mygrep)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Project Structure](#project-structure)
+  - [Building](#building)
+  - [Usage](#usage)
+    - [Examples](#examples)
+  - [Documentation](#documentation)
+  - [Contributing](#contributing)
+  - [License](#license)
+  - [Credits](#credits)
+
+## Features
+
+- Recursive directory search (`-r`)
+- Custom regex engine: groups, alternation, quantifiers (+, ?), character classes, anchors (^, $), escapes (\d, \w, etc.)
+- Multiple file support
+- Standard input support
+- Extensible and well-documented codebase
 
 ## Project Structure
 
-- `main.go`: Command-line interface, file and directory traversal, input handling.
-- `re.go`: Custom regular expression engine (parsing, matching, quantifiers, groups, alternation).
-- `parser.go`: Pattern parsing utilities (group and alternation handling).
-- `state.go`: (if present) likely contains state/environment logic for regex matching.
-- `go.mod`, `go.sum`: Go module files.
+- `main.go`: CLI entry point and orchestration
+- `search.go`: Argument parsing and file search logic
+- `re.go`: Regular expression engine implementation
+- `parser.go`: Regex pattern parsing utilities
+- `state.go`: Regex matching state (if present)
+- `go.mod`, `go.sum`: Go module files
+- `docs/overview.md`: Extensive technical documentation
 
 ## Building
 
@@ -23,44 +48,44 @@ go build -o mygrep .
 ./mygrep [-r] -E <pattern> [path ...]
 ```
 
-- Pass `-r` to search directories recursively (searches all files under the given path).
-- If no path is provided, input is read from standard input (one line at a time).
-- Pattern must be provided with `-E` (basic regex syntax, see implementation for supported features).
+- Use `-r` to search directories recursively
+- If no path is provided, input is read from standard input
+- Pattern must be provided with `-E`
 
 ### Examples
 
-Search for lines containing "hello" in standard input:
-
 ```sh
+# Search for lines containing "hello" in standard input
 echo -e "hello\nworld" | ./mygrep -E "hello"
-```
 
-Search recursively for lines matching a pattern in all files under a directory:
-
-```sh
+# Search recursively for lines matching a pattern in all files under a directory
 ./mygrep -r -E "pattern" ./some_folder
-```
 
-Search in a specific file:
-
-```sh
+# Search in a specific file
 ./mygrep -E "pattern" file.txt
 ```
 
-## Features
+## Documentation
 
-- Recursive search (`-r`)
-- Custom regex engine: supports groups, alternation, quantifiers (+, ?), character classes, anchors (^, $), and some escapes (\d, \w, etc.)
-- Multiple file support
-- Standard input support
+Extensive documentation is available in [`docs/overview.md`](docs/overview.md). Please refer to it for:
 
-## Development
+- Design and implementation details
+- Supported regex features and limitations
+- File traversal and error handling
+- Extension guidelines
 
-You can use the provided build command or run directly with `go run`:
+## Contributing
 
-```sh
-go run . -E "pattern" file.txt
-```
+We welcome contributions from the community! To get started:
+
+1. Read [`docs/overview.md`](docs/overview.md) for technical details.
+2. Fork the repository and create your feature branch.
+3. Submit a pull request with a clear description of your changes.
+4. For questions or suggestions, open an issue.
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
 
 ## Credits
 
