@@ -1,13 +1,20 @@
+
 # mygrep
 
-This repository contains an educational implementation of a minimal `grep` clone written in Go.
+This repository contains an educational implementation of a minimal `grep` clone written in Go. The project demonstrates a custom regular expression engine and file searching logic, inspired by the [CodeCrafters](https://codecrafters.io) "Build Your Own grep" challenge.
 
-The code started as part of the [CodeCrafters](https://codecrafters.io) "Build Your Own grep" challenge, but the implementation and documentation have been adapted to fit my own style.
+## Project Structure
+
+- `main.go`: Command-line interface, file and directory traversal, input handling.
+- `re.go`: Custom regular expression engine (parsing, matching, quantifiers, groups, alternation).
+- `parser.go`: Pattern parsing utilities (group and alternation handling).
+- `state.go`: (if present) likely contains state/environment logic for regex matching.
+- `go.mod`, `go.sum`: Go module files.
 
 ## Building
 
 ```sh
-go build -o mygrep ./app
+go build -o mygrep .
 ```
 
 ## Usage
@@ -16,20 +23,43 @@ go build -o mygrep ./app
 ./mygrep [-r] -E <pattern> [path ...]
 ```
 
-Pass `-r` to search directories recursively. When no path is provided, input is read from standard input.
+- Pass `-r` to search directories recursively (searches all files under the given path).
+- If no path is provided, input is read from standard input (one line at a time).
+- Pattern must be provided with `-E` (basic regex syntax, see implementation for supported features).
 
-Example:
+### Examples
+
+Search for lines containing "hello" in standard input:
 
 ```sh
-echo "hello\nworld" | ./mygrep -E "hello"
+echo -e "hello\nworld" | ./mygrep -E "hello"
 ```
+
+Search recursively for lines matching a pattern in all files under a directory:
+
+```sh
+./mygrep -r -E "pattern" ./some_folder
+```
+
+Search in a specific file:
+
+```sh
+./mygrep -E "pattern" file.txt
+```
+
+## Features
+
+- Recursive search (`-r`)
+- Custom regex engine: supports groups, alternation, quantifiers (+, ?), character classes, anchors (^, $), and some escapes (\d, \w, etc.)
+- Multiple file support
+- Standard input support
 
 ## Development
 
-Use `./your_program.sh` to compile and run the project in a way that's compatible with the CodeCrafters interface.
+You can use the provided build command or run directly with `go run`:
 
 ```sh
-./your_program.sh -E "pattern" file.txt
+go run . -E "pattern" file.txt
 ```
 
 ## Credits
