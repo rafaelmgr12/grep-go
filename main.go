@@ -7,8 +7,6 @@ import (
 
 // Usage: mygrep [-r] -E <pattern> [path ...]
 
-// ...existing code...
-
 func main() {
 	args := parseArgs()
 	re, err := Compile(args.Pattern)
