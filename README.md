@@ -1,5 +1,3 @@
-
-
 # mygrep
 
 mygrep is an open source, minimal grep clone written in Go, featuring a custom regular expression engine and robust file searching capabilities. The project is designed for learning, extensibility, and community collaboration.
